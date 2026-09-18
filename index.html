@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>巻物年表</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Antique+Soft&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --parchment: #F0E4C4;
@@ -202,6 +203,15 @@
     line-height: 2.2;
   }
 
+  /* Loading */
+  .loading {
+    writing-mode: vertical-rl;
+    flex-shrink: 0;
+    padding: 20px 16px;
+    color: rgba(0,0,0,0.35);
+    font-size: 16px;
+  }
+
   /* Modal */
   .overlay {
     position: fixed; inset: 0;
@@ -356,8 +366,8 @@
       width: 100%;
     }
 
-    /* Empty state horizontal */
-    .empty {
+    /* Empty / Loading horizontal */
+    .empty, .loading {
       writing-mode: horizontal-tb;
       text-align: center;
       padding: 40px 20px;
@@ -378,7 +388,9 @@
   <div class="scroll-frame">
     <div class="sgh" id="sghTop"><canvas id="sgTop"></canvas></div>
     <div class="parchment-wrap" id="parchment">
-      <div class="track" id="track"></div>
+      <div class="track" id="track">
+        <div class="loading">読み込み中…</div>
+      </div>
     </div>
     <div class="sgh" id="sghBot"><canvas id="sgBot"></canvas></div>
   </div>
@@ -390,19 +402,25 @@
 </div>
 
 <script>
-// ── Data ──
-var entries = [
-  { id:1, year:'710年',  title:'平城京遷都' },
-  { id:2, year:'794年',  title:'平安京遷都' },
-  { id:3, year:'1185年', title:'鎌倉幕府成立' },
-  { id:4, year:'1467年', title:'応仁の乱' },
-  { id:5, year:'1600年', title:'関ヶ原の戦い' },
-  { id:6, year:'1868年', title:'明治維新' },
-];
-var nid = 7;
-var mode = 'admin';
+// ── Supabase ──
+var SUPABASE_URL = 'https://jfuajndosqmjihngpcta.supabase.co';
+var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpmdWFqbmRvc3FtamlobmdwY3RhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2OTkyMjMsImV4cCI6MjEwNTI3NTIyM30.jDApWbi-0kSqKZrY89zVsLKP2lIajy7-UsiUNJ7dIEI';
+var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+var entries = [];
+var mode = 'viewer';
 
 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Load from DB ──
+async function loadEntries() {
+  var { data, error } = await sb.from('entries').select('*').order('id');
+  if (error) { console.error('Load error:', error); return; }
+  entries = data || [];
+  render();
+  var pw = document.getElementById('parchment');
+  setTimeout(function(){ pw.scrollLeft = pw.scrollWidth; }, 60);
+}
 
 // ── Render ──
 function render() {
@@ -452,14 +470,14 @@ function openAdd() {
     '</div>');
   setTimeout(function(){ document.getElementById('fy').focus(); }, 80);
 }
-function doAdd() {
+async function doAdd() {
   var y = document.getElementById('fy').value.trim();
   var t = document.getElementById('ft').value.trim();
   if (!y || !t) return;
-  entries.push({id: nid++, year: y, title: t});
-  closeModal(); render();
-  var pw = document.getElementById('parchment');
-  setTimeout(function(){ pw.scrollLeft = 0; }, 50);
+  var { error } = await sb.from('entries').insert({ year: y, title: t });
+  if (error) { console.error('Insert error:', error); return; }
+  closeModal();
+  await loadEntries();
 }
 
 function openEdit(id) {
@@ -474,13 +492,14 @@ function openEdit(id) {
     '</div>');
   setTimeout(function(){ document.getElementById('fy').focus(); }, 80);
 }
-function doEdit(id) {
-  var e = entries.find(function(x){ return x.id === id; }); if (!e) return;
+async function doEdit(id) {
   var y = document.getElementById('fy').value.trim();
   var t = document.getElementById('ft').value.trim();
   if (!y || !t) return;
-  e.year = y; e.title = t;
-  closeModal(); render();
+  var { error } = await sb.from('entries').update({ year: y, title: t }).eq('id', id);
+  if (error) { console.error('Update error:', error); return; }
+  closeModal();
+  await loadEntries();
 }
 
 function openDel(id) {
@@ -493,9 +512,11 @@ function openDel(id) {
       '<button class="m-del" onclick="doDel(' + id + ')">削除</button>' +
     '</div>');
 }
-function doDel(id) {
-  entries = entries.filter(function(x){ return x.id !== id; });
-  closeModal(); render();
+async function doDel(id) {
+  var { error } = await sb.from('entries').delete().eq('id', id);
+  if (error) { console.error('Delete error:', error); return; }
+  closeModal();
+  await loadEntries();
 }
 
 // ── Seigaiha pattern (canvas) ──
@@ -540,15 +561,25 @@ function initSeigaiha() {
   if (bot) drawSeigaiha(bot);
 }
 
+// ── Realtime: auto-refresh when data changes ──
+sb.channel('entries-realtime')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, function() {
+    loadEntries();
+  })
+  .subscribe();
+
+// Also refresh when tab regains focus
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden) loadEntries();
+});
+
 // ── Start ──
 var urlP = new URLSearchParams(window.location.search);
 var isAdmin = urlP.get('mode') === 'admin';
 setMode(isAdmin ? 'admin' : 'viewer');
-render();
+loadEntries();
 initSeigaiha();
 window.addEventListener('resize', initSeigaiha);
-var pw = document.getElementById('parchment');
-setTimeout(function(){ pw.scrollLeft = pw.scrollWidth; }, 60);
 </script>
 </body>
 </html>
