@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>巻物年表</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Antique+Soft&display=swap">
+<style>
+  :root {
+    --parchment: #F0E4C4;
+    --parchment-stain: rgba(195,175,135,0.25);
+    --ink: #111;
+    --seigaiha: #2D5A3D;
+    --seigaiha-deep: #1E3D29;
+    --bg: #1A1A14;
+    --bg-s: #222218;
+    --ui-text: #A09880;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0C0C08;
+      --bg-s: #161612;
+      --ui-text: #8A8470;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0C0C08;
+    --bg-s: #161612;
+    --ui-text: #8A8470;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Zen Antique Soft', serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* ══════════════════
+     Mode bar
+     ══════════════════ */
+  .mode-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-s);
+  }
+  .mode-bar span { color: var(--ui-text); font-size: 12px; letter-spacing: 0.06em; }
+
+  /* ══════════════════
+     Scroll frame — DESKTOP
+     ══════════════════ */
+  .scroll-outer {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 8px;
+    min-height: 0;
+  }
+  .scroll-frame {
+    width: 100%;
+    max-width: 1100px;
+    height: min(68vh, 480px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Seigaiha bands */
+  .sgh {
+    height: 44px;
+    flex-shrink: 0;
+    background: var(--seigaiha);
+    overflow: hidden;
+    position: relative;
+  }
+  .sgh canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* Parchment */
+  .parchment-wrap {
+    flex: 1;
+    background: var(--parchment);
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+  }
+  .parchment-wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 25% 15%, var(--parchment-stain), transparent 55%),
+      radial-gradient(ellipse at 75% 85%, var(--parchment-stain), transparent 55%);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .parchment-wrap::-webkit-scrollbar { height: 5px; }
+  .parchment-wrap::-webkit-scrollbar-track { background: rgba(0,0,0,0.04); }
+  .parchment-wrap::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+
+  /* Entries track */
+  .track {
+    display: flex;
+    flex-direction: row-reverse;
+    height: 100%;
+    padding: 24px 36px;
+    gap: 8px;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Single entry */
+  .entry {
+    writing-mode: vertical-rl;
+    flex-shrink: 0;
+    padding: 12px 14px;
+    position: relative;
+    border-radius: 2px;
+    transition: background 0.2s;
+    max-height: 100%;
+  }
+  .is-admin .entry { cursor: pointer; }
+  .is-admin .entry:hover { background: rgba(0,0,0,0.035); }
+
+  .e-year {
+    font-size: 22px;
+    letter-spacing: 0.08em;
+    margin-bottom: 20px;
+  }
+  .e-title {
+    font-size: 20px;
+  }
+
+  /* Entry hover actions (admin only) */
+  .e-act {
+    display: none;
+    writing-mode: horizontal-tb;
+    position: absolute;
+    bottom: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    gap: 4px;
+    z-index: 10;
+  }
+  .is-admin .entry:hover .e-act { display: flex; }
+  .e-act button {
+    width: 28px; height: 28px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.1);
+    background: rgba(240,228,196,0.92);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink);
+    transition: background 0.15s;
+  }
+  .e-act button:hover { background: #E2D4AE; }
+  .e-act .del:hover { background: #E0C0B8; color: #8B1A10; }
+
+  /* Add column (admin) */
+  .add-col {
+    writing-mode: vertical-rl;
+    flex-shrink: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+  }
+  .is-admin .add-col { display: flex; }
+  .add-col button {
+    background: none;
+    border: 1px dashed rgba(0,0,0,0.15);
+    border-radius: 4px;
+    padding: 24px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 15px;
+    color: rgba(0,0,0,0.3);
+    writing-mode: vertical-rl;
+    transition: all 0.2s;
+  }
+  .add-col button:hover {
+    border-color: rgba(0,0,0,0.35);
+    color: rgba(0,0,0,0.5);
+  }
+
+  /* Empty */
+  .empty {
+    writing-mode: vertical-rl;
+    flex-shrink: 0;
+    padding: 20px 16px;
+    color: rgba(0,0,0,0.28);
+    font-size: 18px;
+    line-height: 2.2;
+  }
+
+  /* Modal */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(8,8,4,0.82);
+    z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: var(--parchment);
+    border-radius: 6px;
+    width: 100%; max-width: 420px;
+    padding: 28px 24px;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    transform: translateY(8px);
+    transition: transform 0.2s;
+  }
+  .overlay.open .modal { transform: translateY(0); }
+  .modal h2 {
+    font-size: 17px;
+    text-align: center;
+    margin-bottom: 22px;
+  }
+  .modal label {
+    display: block;
+    font-size: 11px;
+    color: rgba(0,0,0,0.45);
+    margin-bottom: 4px;
+    letter-spacing: 0.06em;
+  }
+  .modal input, .modal textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 3px;
+    background: rgba(255,252,240,0.5);
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--ink);
+    margin-bottom: 14px;
+    outline: none;
+  }
+  .modal input:focus { border-color: var(--seigaiha); }
+  .m-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+  .m-btns button {
+    padding: 7px 18px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+  .m-cancel { background: transparent; color: rgba(0,0,0,0.45); border: 1px solid rgba(0,0,0,0.12) !important; }
+  .m-save { background: var(--seigaiha); color: #DDD4C0; }
+  .m-save:hover { background: var(--seigaiha-deep); }
+  .m-del { background: #8B1A10 !important; color: #F0E4C4 !important; }
+  .confirm-text { text-align: center; font-size: 14px; line-height: 1.9; margin-bottom: 20px; }
+
+  /* ══════════════════
+     MOBILE — horizontal text, vertical stack
+     ══════════════════ */
+  @media (max-width: 600px) {
+    body { overflow-y: auto; overflow-x: hidden; }
+
+    .scroll-outer {
+      padding: 8px 0;
+      align-items: flex-start;
+    }
+    .scroll-frame {
+      flex-direction: column;
+      height: auto;
+      min-height: calc(100vh - 50px);
+      max-width: 100%;
+    }
+
+    /* Seigaiha bands — horizontal strips top & bottom */
+    .sgh {
+      height: 28px;
+      width: 100%;
+      flex-shrink: 0;
+    }
+
+    .parchment-wrap {
+      overflow-x: hidden;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* Entries stack vertically, chronological order */
+    .track {
+      flex-direction: column;
+      flex-wrap: nowrap;
+      height: auto;
+      padding: 16px 14px;
+      gap: 0;
+      align-content: normal;
+    }
+
+    /* Horizontal text entries */
+    .entry {
+      writing-mode: horizontal-tb;
+      padding: 14px 14px;
+      max-height: none;
+      display: flex;
+      flex-direction: row;
+      align-items: baseline;
+      gap: 14px;
+      border-bottom: 1px solid rgba(0,0,0,0.07);
+    }
+    .entry:last-of-type { border-bottom: none; }
+    .e-year {
+      font-size: 15px;
+      margin-bottom: 0;
+      white-space: nowrap;
+      min-width: 60px;
+      color: var(--seigaiha-deep);
+      letter-spacing: 0.04em;
+    }
+    .e-title {
+      font-size: 18px;
+      flex: 1;
+    }
+
+    /* Admin actions — always visible on mobile (no hover) */
+    .is-admin .e-act {
+      display: flex;
+      position: static;
+      transform: none;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+    .e-act button {
+      width: 32px; height: 32px;
+      font-size: 14px;
+    }
+
+    /* Add button — full-width horizontal */
+    .add-col {
+      writing-mode: horizontal-tb;
+      padding: 10px 14px;
+      width: 100%;
+    }
+    .is-admin .add-col { display: block; }
+    .add-col button {
+      writing-mode: horizontal-tb;
+      padding: 12px 20px;
+      font-size: 15px;
+      width: 100%;
+    }
+
+    /* Empty state horizontal */
+    .empty {
+      writing-mode: horizontal-tb;
+      text-align: center;
+      padding: 40px 20px;
+      line-height: 1.8;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Mode bar (admin only) -->
+<div class="mode-bar" id="modeBar">
+  <span>管理者モード</span>
+</div>
+
+<!-- Scroll -->
+<div class="scroll-outer">
+  <div class="scroll-frame">
+    <div class="sgh" id="sghTop"><canvas id="sgTop"></canvas></div>
+    <div class="parchment-wrap" id="parchment">
+      <div class="track" id="track"></div>
+    </div>
+    <div class="sgh" id="sghBot"><canvas id="sgBot"></canvas></div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+// ── Data ──
+var entries = [
+  { id:1, year:'710年',  title:'平城京遷都' },
+  { id:2, year:'794年',  title:'平安京遷都' },
+  { id:3, year:'1185年', title:'鎌倉幕府成立' },
+  { id:4, year:'1467年', title:'応仁の乱' },
+  { id:5, year:'1600年', title:'関ヶ原の戦い' },
+  { id:6, year:'1868年', title:'明治維新' },
+];
+var nid = 7;
+var mode = 'admin';
+
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Render ──
+function render() {
+  var t = document.getElementById('track');
+  if (!entries.length) {
+    t.innerHTML = '<div class="empty">ここに年表を書き記す</div>' +
+      '<div class="add-col"><button onclick="openAdd()">＋ 追加</button></div>';
+    return;
+  }
+  t.innerHTML = entries.map(function(e) {
+    return '<div class="entry" data-id="' + e.id + '">' +
+      '<div class="e-act">' +
+        '<button onclick="event.stopPropagation();openEdit(' + e.id + ')" title="編集">&#9998;</button>' +
+        '<button class="del" onclick="event.stopPropagation();openDel(' + e.id + ')" title="削除">&#10005;</button>' +
+      '</div>' +
+      '<div class="e-year">' + esc(e.year) + '</div>' +
+      '<div class="e-title">' + esc(e.title) + '</div>' +
+    '</div>';
+  }).join('') + '<div class="add-col"><button onclick="openAdd()">＋ 追加</button></div>';
+}
+
+// ── Mode (URL-based) ──
+function setMode(m) {
+  mode = m;
+  document.getElementById('parchment').classList.toggle('is-admin', m==='admin');
+  document.getElementById('modeBar').style.display = m==='admin' ? '' : 'none';
+}
+
+// ── Modal helpers ──
+function openModal(h) {
+  document.getElementById('modal').innerHTML = h;
+  document.getElementById('overlay').classList.add('open');
+}
+function closeModal() { document.getElementById('overlay').classList.remove('open'); }
+document.getElementById('overlay').addEventListener('click', function(e) {
+  if (e.target === document.getElementById('overlay')) closeModal();
+});
+
+function openAdd() {
+  openModal(
+    '<h2>項目を追加</h2>' +
+    '<label>年号</label><input id="fy" placeholder="例：1603年">' +
+    '<label>出来事</label><input id="ft" placeholder="例：江戸幕府成立">' +
+    '<div class="m-btns">' +
+      '<button class="m-cancel" onclick="closeModal()">取消</button>' +
+      '<button class="m-save" onclick="doAdd()">追加</button>' +
+    '</div>');
+  setTimeout(function(){ document.getElementById('fy').focus(); }, 80);
+}
+function doAdd() {
+  var y = document.getElementById('fy').value.trim();
+  var t = document.getElementById('ft').value.trim();
+  if (!y || !t) return;
+  entries.push({id: nid++, year: y, title: t});
+  closeModal(); render();
+  var pw = document.getElementById('parchment');
+  setTimeout(function(){ pw.scrollLeft = 0; }, 50);
+}
+
+function openEdit(id) {
+  var e = entries.find(function(x){ return x.id === id; }); if (!e) return;
+  openModal(
+    '<h2>編集</h2>' +
+    '<label>年号</label><input id="fy" value="' + esc(e.year) + '">' +
+    '<label>出来事</label><input id="ft" value="' + esc(e.title) + '">' +
+    '<div class="m-btns">' +
+      '<button class="m-cancel" onclick="closeModal()">取消</button>' +
+      '<button class="m-save" onclick="doEdit(' + id + ')">保存</button>' +
+    '</div>');
+  setTimeout(function(){ document.getElementById('fy').focus(); }, 80);
+}
+function doEdit(id) {
+  var e = entries.find(function(x){ return x.id === id; }); if (!e) return;
+  var y = document.getElementById('fy').value.trim();
+  var t = document.getElementById('ft').value.trim();
+  if (!y || !t) return;
+  e.year = y; e.title = t;
+  closeModal(); render();
+}
+
+function openDel(id) {
+  var e = entries.find(function(x){ return x.id === id; }); if (!e) return;
+  openModal(
+    '<h2>削除</h2>' +
+    '<div class="confirm-text">「' + esc(e.title) + '」を削除しますか？</div>' +
+    '<div class="m-btns">' +
+      '<button class="m-cancel" onclick="closeModal()">取消</button>' +
+      '<button class="m-del" onclick="doDel(' + id + ')">削除</button>' +
+    '</div>');
+}
+function doDel(id) {
+  entries = entries.filter(function(x){ return x.id !== id; });
+  closeModal(); render();
+}
+
+// ── Seigaiha pattern (canvas) ──
+function drawSeigaiha(cvs) {
+  var dpr = window.devicePixelRatio || 1;
+  var w = cvs.parentElement.offsetWidth;
+  var h = cvs.parentElement.offsetHeight;
+  if (w === 0 || h === 0) return;
+  cvs.width = w * dpr;
+  cvs.height = h * dpr;
+  cvs.style.width = w + 'px';
+  cvs.style.height = h + 'px';
+  var ctx = cvs.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  var r = 14;
+  var major = Math.max(w, h);
+  var cols = Math.ceil(major / (r * 2)) + 2;
+  var rows = Math.ceil(major / r) + 2;
+
+  for (var row = 0; row < rows; row++) {
+    for (var col = -1; col < cols; col++) {
+      var cx = col * r * 2 + (row % 2 === 1 ? r : 0);
+      var cy = row * r;
+      var radii = [r * 0.95, r * 0.7, r * 0.45, r * 0.2];
+      var alphas = [0.12, 0.18, 0.24, 0.30];
+      for (var i = 0; i < radii.length; i++) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radii[i], Math.PI, 0);
+        ctx.strokeStyle = 'rgba(255,255,255,' + alphas[i] + ')';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function initSeigaiha() {
+  var top = document.getElementById('sgTop');
+  var bot = document.getElementById('sgBot');
+  if (top) drawSeigaiha(top);
+  if (bot) drawSeigaiha(bot);
+}
+
+// ── Start ──
+var urlP = new URLSearchParams(window.location.search);
+var isAdmin = urlP.get('mode') === 'admin';
+setMode(isAdmin ? 'admin' : 'viewer');
+render();
+initSeigaiha();
+window.addEventListener('resize', initSeigaiha);
+var pw = document.getElementById('parchment');
+setTimeout(function(){ pw.scrollLeft = pw.scrollWidth; }, 60);
+</script>
+</body>
+</html>
